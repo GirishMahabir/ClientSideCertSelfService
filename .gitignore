@@ -2,8 +2,12 @@
 __pycache__/
 *.pyc
 *.pyo
+# All runtime-generated cert files — run init_ca.py to recreate
 certs/ca/ca.key
-certs/clients/
+certs/ca/ca.crt
+certs/ca/crl.pem
+certs/clients/*
+!certs/clients/.gitkeep
 cert_manager.db
 logs/
 *.p12
