@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}CertPortal{% endblock %} — Certificate Self-Service</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            brand: {
+              50:  '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
+              300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1',
+              600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+
+<body class="h-full bg-slate-950 text-slate-100 font-sans antialiased">
+
+{% if session.username %}
+<!-- Top nav -->
+<nav class="fixed top-0 inset-x-0 z-40 glass-nav border-b border-white/10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+    <!-- Brand -->
+    <a href="{{ url_for('auth.index') }}" class="flex items-center gap-2 font-semibold text-lg">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+        <i class="fa-solid fa-shield-halved text-white text-sm"></i>
+      </div>
+      <span class="text-white">CertPortal</span>
+    </a>
+
+    <!-- Nav links -->
+    <div class="hidden md:flex items-center gap-1">
+      {% if session.role == 'admin' %}
+        <a href="{{ url_for('admin.dashboard') }}"
+           class="nav-link {% if request.endpoint and request.endpoint.startswith('admin.') %}nav-link-active{% endif %}">
+          <i class="fa-solid fa-gauge-high mr-1.5"></i>Admin
+        </a>
+      {% else %}
+        <a href="{{ url_for('client.dashboard') }}"
+           class="nav-link {% if request.endpoint and request.endpoint.startswith('client.') %}nav-link-active{% endif %}">
+          <i class="fa-solid fa-id-card mr-1.5"></i>My Certificate
+        </a>
+      {% endif %}
+      {% if session.role == 'admin' %}
+        <a href="{{ url_for('admin.download_ca') }}" class="nav-link">
+          <i class="fa-solid fa-certificate mr-1.5"></i>Download CA
+        </a>
+      {% else %}
+        <a href="{{ url_for('client.download_ca') }}" class="nav-link">
+          <i class="fa-solid fa-certificate mr-1.5"></i>Download CA
+        </a>
+      {% endif %}
+    </div>
+
+    <!-- User menu -->
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex flex-col items-end text-sm">
+        <span class="font-medium text-white">{{ session.display_name or session.username }}</span>
+        <span class="text-xs text-slate-400 capitalize">{{ session.role }}</span>
+      </div>
+      <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+        {{ (session.display_name or session.username or '?')[0].upper() }}
+      </div>
+      <a href="{{ url_for('auth.logout') }}"
+         class="ml-1 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
+        <i class="fa-solid fa-right-from-bracket mr-1"></i>Logout
+      </a>
+    </div>
+  </div>
+</nav>
+{% endif %}
+
+<!-- Flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="fixed top-20 right-4 z-50 flex flex-col gap-2 w-80" id="flash-container">
+      {% for category, message in messages %}
+        <div class="flash-toast flash-{{ category }} flex items-start gap-3 p-4 rounded-xl shadow-xl"
+             role="alert">
+          <i class="fa-solid {% if category == 'success' %}fa-circle-check text-emerald-400
+                              {% elif category == 'danger' %}fa-circle-xmark text-red-400
+                              {% elif category == 'warning' %}fa-triangle-exclamation text-amber-400
+                              {% else %}fa-circle-info text-blue-400{% endif %} mt-0.5 shrink-0"></i>
+          <span class="text-sm leading-snug">{{ message }}</span>
+          <button onclick="this.parentElement.remove()" class="ml-auto shrink-0 text-slate-400 hover:text-white">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main class="{% if session.username %}pt-16{% endif %} min-h-full">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

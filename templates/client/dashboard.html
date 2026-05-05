@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}My Certificate{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+
+  <!-- Page header -->
+  <div class="mb-8">
+    <h1 class="text-2xl font-bold text-white">My Certificate</h1>
+    <p class="text-slate-400 text-sm mt-1">
+      Generate or download your personal TLS client certificate.
+    </p>
+  </div>
+
+  <!-- No cert yet -->
+  {% if not cert %}
+  <div class="glass-card rounded-2xl p-8 text-center mb-6">
+    <div class="inline-flex w-20 h-20 rounded-2xl bg-indigo-500/10 border border-indigo-500/20
+                items-center justify-center mb-5">
+      <i class="fa-solid fa-certificate text-indigo-400 text-3xl"></i>
+    </div>
+    <h2 class="text-xl font-semibold text-white mb-2">No certificate yet</h2>
+    <p class="text-slate-400 text-sm mb-6 max-w-sm mx-auto">
+      Generate your personal client certificate below. You will only need to do this once.
+      Keep the certificate secure — it identifies you to company services.
+    </p>
+    <form method="POST" action="{{ url_for('client.generate') }}"
+          onsubmit="return confirmGenerate()">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <button type="submit" id="generateBtn" class="btn-primary inline-flex items-center gap-2">
+        <i class="fa-solid fa-key"></i>
+        Generate My Certificate
+      </button>
+    </form>
+  </div>
+
+  {% else %}
+
+  <!-- Cert status -->
+  {% if expiry_days is not none and expiry_days < 0 %}
+    <div class="alert-banner alert-danger mb-5">
+      <i class="fa-solid fa-circle-xmark shrink-0"></i>
+      Your certificate expired {{ -expiry_days }} day{{ 's' if -expiry_days != 1 }} ago.
+      Contact an administrator to renew it.
+    </div>
+  {% elif expiry_days is not none and expiry_days <= warning_days %}
+    <div class="alert-banner alert-warning mb-5">
+      <i class="fa-solid fa-triangle-exclamation shrink-0"></i>
+      Your certificate expires in <strong>{{ expiry_days }} day{{ 's' if expiry_days != 1 }}</strong>.
+      Download a new one before it expires or contact an admin for renewal.
+    </div>
+  {% endif %}
+
+  <!-- Cert details card -->
+  <div class="glass-card rounded-2xl p-6 mb-6">
+    <div class="flex items-start justify-between mb-5">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600
+                    flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="fa-solid fa-id-card text-white text-lg"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white text-lg">Your Certificate</h2>
+          <p class="text-sm text-slate-400">Active & Ready to Download</p>
+        </div>
+      </div>
+      {% if expiry_days is not none and expiry_days > 0 %}
+        <span class="badge badge-success">
+          <i class="fa-solid fa-circle-check mr-1"></i>Active
+        </span>
+      {% else %}
+        <span class="badge badge-danger">
+          <i class="fa-solid fa-circle-xmark mr-1"></i>Expired
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- Details grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-sm">
+      <div class="detail-row">
+        <span class="detail-label"><i class="fa-solid fa-user mr-1.5"></i>Common Name</span>
+        <span class="detail-value font-mono">{{ cert.common_name }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label"><i class="fa-solid fa-envelope mr-1.5"></i>Email</span>
+        <span class="detail-value">{{ cert.email or '—' }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label"><i class="fa-solid fa-calendar-plus mr-1.5"></i>Issued</span>
+        <span class="detail-value">{{ cert.issued_at[:10] }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label"><i class="fa-solid fa-calendar-xmark mr-1.5"></i>Expires</span>
+        <span class="detail-value {% if expiry_days is not none and expiry_days <= warning_days %}text-amber-400{% endif %}">
+          {{ cert.expires_at[:10] }}
+          {% if expiry_days is not none and expiry_days > 0 %}
+            <span class="text-xs text-slate-500 ml-1">({{ expiry_days }} days)</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="detail-row sm:col-span-2">
+        <span class="detail-label"><i class="fa-solid fa-fingerprint mr-1.5"></i>Serial Number</span>
+        <span class="detail-value font-mono text-xs truncate" title="{{ cert.serial }}">{{ cert.serial[:48] }}…</span>
+      </div>
+    </div>
+
+    <!-- Download form -->
+    <div class="border-t border-white/10 pt-5">
+      <h3 class="text-sm font-medium text-white mb-3">
+        <i class="fa-solid fa-download text-indigo-400 mr-1.5"></i>Download Certificate (PKCS#12 / .p12)
+      </h3>
+      <p class="text-xs text-slate-400 mb-4">
+        Set a password to protect your certificate bundle. You will need this password when importing
+        it into your browser or operating system. <strong class="text-slate-300">Save this password</strong>
+        — it cannot be recovered.
+      </p>
+      <form method="POST" action="{{ url_for('client.download') }}" id="downloadForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+              <i class="fa-solid fa-lock text-sm"></i>
+            </span>
+            <input id="p12_password" name="p12_password" type="password"
+                   placeholder="Set a bundle password (min 4 chars)"
+                   required minlength="4"
+                   class="input-field pl-10 pr-10 w-full" />
+            <button type="button" id="toggleP12Pwd"
+                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400
+                           hover:text-slate-200 transition-colors focus:outline-none"
+                    aria-label="Toggle password visibility">
+              <i class="fa-solid fa-eye text-sm" id="p12EyeIcon"></i>
+            </button>
+          </div>
+          <button type="submit" class="btn-primary whitespace-nowrap flex items-center gap-2 justify-center">
+            <i class="fa-solid fa-file-arrow-down"></i>Download .p12
+          </button>
+        </div>
+        <p class="text-xs text-slate-600 mt-2">
+          You can download your certificate multiple times with different passwords.
+        </p>
+      </form>
+    </div>
+  </div>
+
+  {% endif %}
+
+  <!-- Installation instructions -->
+  <div class="glass-card rounded-2xl p-6 mb-6">
+    <h3 class="font-semibold text-white mb-4">
+      <i class="fa-solid fa-circle-info text-indigo-400 mr-2"></i>How to Install Your Certificate
+    </h3>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 mb-5 bg-white/5 rounded-xl p-1" role="tablist">
+      <button class="install-tab active flex-1" data-tab="windows" role="tab">
+        <i class="fa-brands fa-windows mr-1.5"></i>Windows
+      </button>
+      <button class="install-tab flex-1" data-tab="macos" role="tab">
+        <i class="fa-brands fa-apple mr-1.5"></i>macOS
+      </button>
+      <button class="install-tab flex-1" data-tab="linux" role="tab">
+        <i class="fa-brands fa-linux mr-1.5"></i>Linux
+      </button>
+      <button class="install-tab flex-1" data-tab="ios" role="tab">
+        <i class="fa-brands fa-apple mr-1.5"></i>iOS
+      </button>
+    </div>
+
+    <div id="tab-windows" class="install-content text-sm text-slate-300 space-y-2">
+      <p class="font-medium text-white">Windows Certificate Store</p>
+      <ol class="list-decimal list-inside space-y-1.5 text-slate-400">
+        <li>First, <a href="{{ url_for('client.download_ca') }}" class="text-indigo-400 hover:underline">download and install the Company CA</a> into <em>Trusted Root Certification Authorities</em>.</li>
+        <li>Double-click the downloaded <code class="code-tag">.p12</code> file to open the import wizard.</li>
+        <li>Select <strong>Current User</strong> → enter the bundle password you set.</li>
+        <li>Choose <strong>Personal</strong> as the certificate store.</li>
+        <li>Click Finish. Browsers (Chrome, Edge) will pick it up automatically.</li>
+      </ol>
+    </div>
+
+    <div id="tab-macos" class="install-content hidden text-sm text-slate-300 space-y-2">
+      <p class="font-medium text-white">macOS Keychain</p>
+      <ol class="list-decimal list-inside space-y-1.5 text-slate-400">
+        <li><a href="{{ url_for('client.download_ca') }}" class="text-indigo-400 hover:underline">Download the CA cert</a> and double-click it → add to <em>Login</em> keychain → set trust to <strong>Always Trust</strong>.</li>
+        <li>Double-click the <code class="code-tag">.p12</code> → enter the bundle password.</li>
+        <li>Open <strong>Keychain Access</strong> and verify the cert appears under <em>My Certificates</em>.</li>
+        <li>Safari and Chrome will automatically use it; Firefox may need manual configuration.</li>
+      </ol>
+    </div>
+
+    <div id="tab-linux" class="install-content hidden text-sm text-slate-300 space-y-2">
+      <p class="font-medium text-white">Linux / Firefox</p>
+      <ol class="list-decimal list-inside space-y-1.5 text-slate-400">
+        <li><a href="{{ url_for('client.download_ca') }}" class="text-indigo-400 hover:underline">Download the CA cert</a> and add it:
+          <code class="code-tag block mt-1">sudo cp company-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates</code>
+        </li>
+        <li>Import the <code class="code-tag">.p12</code> into Firefox:
+          <em>Settings → Privacy &amp; Security → Certificates → Your Certificates → Import</em>
+        </li>
+        <li>For Chrome on Linux: <code class="code-tag">pk12util -d sql:$HOME/.pki/nssdb -i your-cert.p12</code></li>
+      </ol>
+    </div>
+
+    <div id="tab-ios" class="install-content hidden text-sm text-slate-300 space-y-2">
+      <p class="font-medium text-white">iOS / iPadOS</p>
+      <ol class="list-decimal list-inside space-y-1.5 text-slate-400">
+        <li>Email yourself both the CA cert and the <code class="code-tag">.p12</code> file, or use AirDrop.</li>
+        <li>Tap the <strong>CA cert</strong> → install profile → <em>Settings → General → VPN &amp; Device Management → Install</em> → trust it in <em>Certificate Trust Settings</em>.</li>
+        <li>Tap the <strong>.p12</strong> → install → enter your bundle password.</li>
+        <li>The certificate will be available system-wide for Safari and managed apps.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- CA Download card -->
+  <div class="glass-card rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-4">
+    <div class="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
+      <i class="fa-solid fa-building-shield text-purple-400"></i>
+    </div>
+    <div class="flex-1 text-sm text-center sm:text-left">
+      <p class="font-medium text-white">Company CA Certificate</p>
+      <p class="text-slate-400 text-xs mt-0.5">Install the CA so your devices trust company-issued certificates.</p>
+    </div>
+    <a href="{{ url_for('client.download_ca') }}" class="btn-secondary text-sm whitespace-nowrap">
+      <i class="fa-solid fa-download mr-1.5"></i>Download CA
+    </a>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// P12 password visibility toggle
+const toggleP12 = document.getElementById('toggleP12Pwd');
+if (toggleP12) {
+  const p12Input = document.getElementById('p12_password');
+  const p12Eye   = document.getElementById('p12EyeIcon');
+  toggleP12.addEventListener('click', () => {
+    const visible = p12Input.type === 'text';
+    p12Input.type = visible ? 'password' : 'text';
+    p12Eye.className = visible ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+  });
+}
+
+// Generate confirmation
+function confirmGenerate() {
+  return confirm('Generate your client certificate now? You can download it right after.');
+}
+
+// Install tabs
+document.querySelectorAll('.install-tab').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.install-content').forEach(c => c.classList.add('hidden'));
+    this.classList.add('active');
+    document.getElementById('tab-' + this.dataset.tab).classList.remove('hidden');
+  });
+});
+</script>
+{% endblock %}

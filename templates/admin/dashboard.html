@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <!-- Page header -->
+  <div class="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Admin Dashboard</h1>
+      <p class="text-slate-400 text-sm mt-1">Manage all client certificates and CA configuration.</p>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <a href="{{ url_for('admin.download_ca') }}" class="btn-secondary text-sm">
+        <i class="fa-solid fa-download mr-1.5"></i>Download CA
+      </a>
+      <a href="{{ url_for('admin.download_crl') }}" class="btn-secondary text-sm">
+        <i class="fa-solid fa-list-check mr-1.5"></i>Download CRL
+      </a>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="stat-card">
+      <div class="stat-icon bg-indigo-500/20 text-indigo-400"><i class="fa-solid fa-certificate"></i></div>
+      <div>
+        <p class="stat-value">{{ stats.total }}</p>
+        <p class="stat-label">Total Issued</p>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon bg-emerald-500/20 text-emerald-400"><i class="fa-solid fa-circle-check"></i></div>
+      <div>
+        <p class="stat-value">{{ stats.active }}</p>
+        <p class="stat-label">Active</p>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon bg-amber-500/20 text-amber-400"><i class="fa-solid fa-clock"></i></div>
+      <div>
+        <p class="stat-value">{{ stats.expiring_soon }}</p>
+        <p class="stat-label">Expiring Soon</p>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon bg-red-500/20 text-red-400"><i class="fa-solid fa-ban"></i></div>
+      <div>
+        <p class="stat-value">{{ stats.revoked }}</p>
+        <p class="stat-label">Revoked</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CA Info -->
+  {% if ca_info %}
+  <div class="glass-card rounded-2xl p-5 mb-8">
+    <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">
+      <i class="fa-solid fa-building-shield text-indigo-400 mr-2"></i>Certificate Authority
+    </h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+      <div>
+        <p class="text-slate-500 text-xs mb-0.5">Subject</p>
+        <p class="text-slate-200 font-mono text-xs truncate" title="{{ ca_info.subject }}">{{ ca_info.subject }}</p>
+      </div>
+      <div>
+        <p class="text-slate-500 text-xs mb-0.5">Serial</p>
+        <p class="text-slate-200 font-mono text-xs truncate">{{ ca_info.serial[:24] }}…</p>
+      </div>
+      <div>
+        <p class="text-slate-500 text-xs mb-0.5">Valid From</p>
+        <p class="text-slate-200">{{ ca_info.not_before }}</p>
+      </div>
+      <div>
+        <p class="text-slate-500 text-xs mb-0.5">Valid Until</p>
+        <p class="text-slate-200">{{ ca_info.not_after }}</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Certificates table -->
+  <div class="glass-card rounded-2xl overflow-hidden mb-8">
+    <div class="px-5 py-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center gap-3">
+      <h3 class="font-semibold text-white flex-1">
+        <i class="fa-solid fa-table-list text-indigo-400 mr-2"></i>Certificates
+      </h3>
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+        <input id="certSearch" type="text" placeholder="Search by user or status…"
+               class="input-field text-sm pl-9 py-2 w-full sm:w-64" />
+      </div>
+      <!-- Status filter -->
+      <select id="statusFilter" class="input-field text-sm py-2 pr-8">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="revoked">Revoked</option>
+      </select>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="certTable">
+        <thead>
+          <tr class="border-b border-white/10 text-xs text-slate-500 uppercase tracking-wider">
+            <th class="text-left px-5 py-3">User</th>
+            <th class="text-left px-5 py-3 hidden sm:table-cell">Common Name</th>
+            <th class="text-left px-5 py-3">Status</th>
+            <th class="text-left px-5 py-3 hidden md:table-cell">Issued</th>
+            <th class="text-left px-5 py-3">Expires</th>
+            <th class="text-right px-5 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="certTableBody">
+          {% for cert in certs %}
+          {% set days = expiry_fn(cert.expires_at) %}
+          <tr class="cert-row border-b border-white/5 hover:bg-white/5 transition-colors"
+              data-username="{{ cert.username }}"
+              data-status="{{ cert.status }}">
+            <td class="px-5 py-3.5">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600
+                            flex items-center justify-center text-white text-xs font-bold shrink-0">
+                  {{ cert.username[0].upper() }}
+                </div>
+                <div>
+                  <p class="font-medium text-white">{{ cert.username }}</p>
+                  <p class="text-xs text-slate-500">{{ cert.email or '—' }}</p>
+                </div>
+              </div>
+            </td>
+            <td class="px-5 py-3.5 hidden sm:table-cell text-slate-300 font-mono text-xs">{{ cert.common_name }}</td>
+            <td class="px-5 py-3.5">
+              {% if cert.status == 'active' %}
+                {% if days <= warning_days %}
+                  <span class="badge badge-warning">
+                    <i class="fa-solid fa-clock mr-1"></i>Expiring
+                  </span>
+                {% else %}
+                  <span class="badge badge-success">
+                    <i class="fa-solid fa-circle-check mr-1"></i>Active
+                  </span>
+                {% endif %}
+              {% else %}
+                <span class="badge badge-danger">
+                  <i class="fa-solid fa-ban mr-1"></i>Revoked
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3.5 hidden md:table-cell text-slate-400 text-xs">
+              {{ cert.issued_at[:10] }}
+            </td>
+            <td class="px-5 py-3.5 text-xs">
+              {% if cert.status == 'active' %}
+                {% if days < 0 %}
+                  <span class="text-red-400">Expired {{ -days }}d ago</span>
+                {% elif days <= warning_days %}
+                  <span class="text-amber-400">{{ cert.expires_at[:10] }} ({{ days }}d)</span>
+                {% else %}
+                  <span class="text-slate-400">{{ cert.expires_at[:10] }}</span>
+                {% endif %}
+              {% else %}
+                <span class="text-slate-600">{{ cert.expires_at[:10] }}</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3.5 text-right">
+              <div class="flex items-center justify-end gap-1">
+                {% if cert.status == 'active' %}
+                  <!-- Renew -->
+                  <form method="POST" action="{{ url_for('admin.renew', cert_id=cert.id) }}"
+                        class="inline" onsubmit="return confirm('Renew certificate for {{ cert.username }}? The current cert will be revoked.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <button type="submit" class="action-btn text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                            title="Renew certificate">
+                      <i class="fa-solid fa-rotate"></i>
+                    </button>
+                  </form>
+                  <!-- Revoke -->
+                  <button type="button"
+                          onclick="openRevokeModal({{ cert.id }}, '{{ cert.username }}')"
+                          class="action-btn text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          title="Revoke certificate">
+                    <i class="fa-solid fa-ban"></i>
+                  </button>
+                {% else %}
+                  <span class="text-xs text-slate-600 pr-2">
+                    Revoked by {{ cert.revoked_by or '—' }}
+                  </span>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-5 py-12 text-center text-slate-500">
+              <i class="fa-solid fa-inbox text-3xl mb-3 block opacity-30"></i>
+              No certificates have been issued yet.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div id="noResults" class="hidden px-5 py-8 text-center text-slate-500 text-sm">
+      <i class="fa-solid fa-magnifying-glass mb-2 block opacity-40"></i>
+      No certificates match your search.
+    </div>
+  </div>
+
+  <!-- Audit log -->
+  <div class="glass-card rounded-2xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/10">
+      <h3 class="font-semibold text-white">
+        <i class="fa-solid fa-scroll text-indigo-400 mr-2"></i>Recent Audit Log
+        <span class="ml-2 text-xs text-slate-500 font-normal">(last 50 events)</span>
+      </h3>
+    </div>
+    <div class="overflow-x-auto max-h-72 overflow-y-auto">
+      <table class="w-full text-xs">
+        <thead class="sticky top-0">
+          <tr class="border-b border-white/10 text-slate-500 uppercase tracking-wider bg-slate-900/80 backdrop-blur">
+            <th class="text-left px-5 py-2.5">Time (UTC)</th>
+            <th class="text-left px-5 py-2.5">User</th>
+            <th class="text-left px-5 py-2.5">Action</th>
+            <th class="text-left px-5 py-2.5 hidden sm:table-cell">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in audit_entries %}
+          <tr class="border-b border-white/5 hover:bg-white/5">
+            <td class="px-5 py-2.5 text-slate-500 font-mono whitespace-nowrap">
+              {{ entry.ts[:19].replace('T', ' ') }}
+            </td>
+            <td class="px-5 py-2.5 text-slate-300 font-medium">{{ entry.username }}</td>
+            <td class="px-5 py-2.5">
+              <span class="font-mono text-indigo-400">{{ entry.action }}</span>
+            </td>
+            <td class="px-5 py-2.5 text-slate-500 hidden sm:table-cell truncate max-w-xs">
+              {{ entry.detail or '—' }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="4" class="px-5 py-6 text-center text-slate-600">No audit events yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Revoke modal -->
+<div id="revokeModal"
+     class="fixed inset-0 z-50 hidden items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="revokeModalTitle">
+  <!-- Backdrop -->
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeRevokeModal()"></div>
+  <!-- Panel -->
+  <div class="relative glass-card rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <h4 id="revokeModalTitle" class="text-lg font-semibold text-white mb-1">Revoke Certificate</h4>
+    <p class="text-sm text-slate-400 mb-5">
+      Revoke the certificate for <strong id="revokeUsername" class="text-white"></strong>?
+      This cannot be undone. The CRL will be regenerated.
+    </p>
+    <form method="POST" id="revokeForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <label class="block text-sm font-medium text-slate-300 mb-1.5">Revocation Reason</label>
+      <select name="reason" class="input-field w-full mb-5">
+        <option value="unspecified">Unspecified</option>
+        <option value="keyCompromise">Key Compromise</option>
+        <option value="superseded">Superseded</option>
+        <option value="cessationOfOperation">Cessation of Operation</option>
+        <option value="affiliationChanged">Affiliation Changed</option>
+      </select>
+      <div class="flex gap-3">
+        <button type="button" onclick="closeRevokeModal()"
+                class="flex-1 btn-secondary">Cancel</button>
+        <button type="submit" class="flex-1 btn-danger">
+          <i class="fa-solid fa-ban mr-1.5"></i>Revoke
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Revoke modal
+function openRevokeModal(id, username) {
+  document.getElementById('revokeUsername').textContent = username;
+  document.getElementById('revokeForm').action = `/admin/certs/${id}/revoke`;
+  const modal = document.getElementById('revokeModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+function closeRevokeModal() {
+  const modal = document.getElementById('revokeModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+// ESC closes modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeRevokeModal();
+});
+
+// Table search + filter
+function filterTable() {
+  const q      = document.getElementById('certSearch').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  const rows   = document.querySelectorAll('.cert-row');
+  let visible  = 0;
+
+  rows.forEach(row => {
+    const username = (row.dataset.username || '').toLowerCase();
+    const rowStatus = (row.dataset.status || '').toLowerCase();
+    const matchQ  = !q || username.includes(q);
+    const matchSt = !status || rowStatus === status;
+    if (matchQ && matchSt) {
+      row.style.display = '';
+      visible++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  document.getElementById('noResults').classList.toggle('hidden', visible > 0);
+}
+
+document.getElementById('certSearch').addEventListener('input', filterTable);
+document.getElementById('statusFilter').addEventListener('change', filterTable);
+</script>
+{% endblock %}

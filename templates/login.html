@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — Certificate Self-Service</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+
+<body class="h-full bg-slate-950 font-sans antialiased flex items-center justify-center px-4">
+
+  <!-- Animated background orbs -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Flash messages (e.g. logout confirmation) -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80">
+        {% for category, message in messages %}
+          <div class="flash-toast flash-{{ category }} flex items-start gap-3 p-4 rounded-xl shadow-xl">
+            <i class="fa-solid {% if category == 'success' %}fa-circle-check text-emerald-400
+                                {% elif category == 'danger' %}fa-circle-xmark text-red-400
+                                {% elif category == 'warning' %}fa-triangle-exclamation text-amber-400
+                                {% else %}fa-circle-info text-blue-400{% endif %} mt-0.5 shrink-0"></i>
+            <span class="text-sm leading-snug">{{ message }}</span>
+            <button onclick="this.parentElement.remove()" class="ml-auto shrink-0 text-slate-400 hover:text-white">
+              <i class="fa-solid fa-xmark text-xs"></i>
+            </button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="relative w-full max-w-md">
+
+    <!-- Logo / Brand -->
+    <div class="text-center mb-8">
+      <div class="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600
+                  items-center justify-center shadow-lg shadow-indigo-500/30 mb-4">
+        <i class="fa-solid fa-shield-halved text-white text-2xl"></i>
+      </div>
+      <h1 class="text-3xl font-bold text-white">CertPortal</h1>
+      <p class="mt-1 text-slate-400 text-sm">Client Certificate Self-Service</p>
+    </div>
+
+    <!-- Card -->
+    <div class="glass-card rounded-2xl p-8 shadow-2xl">
+      <h2 class="text-xl font-semibold text-white mb-6">Sign in to your account</h2>
+
+      {% if error %}
+        <div class="mb-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm">
+          <i class="fa-solid fa-circle-xmark mt-0.5 shrink-0"></i>
+          <span>{{ error }}</span>
+        </div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('auth.login', next=request.args.get('next', '')) }}"
+            id="loginForm" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+        <!-- Username -->
+        <div class="mb-5">
+          <label for="username" class="block text-sm font-medium text-slate-300 mb-1.5">
+            Username
+          </label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+              <i class="fa-solid fa-user text-sm"></i>
+            </span>
+            <input
+              id="username" name="username" type="text"
+              autocomplete="username" required autofocus
+              value="{{ request.form.get('username', '') }}"
+              placeholder="jdoe"
+              class="input-field pl-10 w-full"
+            />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="mb-6">
+          <label for="password" class="block text-sm font-medium text-slate-300 mb-1.5">
+            Password
+          </label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+              <i class="fa-solid fa-lock text-sm"></i>
+            </span>
+            <input
+              id="password" name="password" type="password"
+              autocomplete="current-password" required
+              placeholder="••••••••"
+              class="input-field pl-10 pr-10 w-full"
+            />
+            <button type="button" id="togglePwd"
+                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400
+                           hover:text-slate-200 transition-colors focus:outline-none"
+                    aria-label="Toggle password visibility">
+              <i class="fa-solid fa-eye text-sm" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" id="submitBtn"
+                class="w-full btn-primary flex items-center justify-center gap-2">
+          <span id="btnText">Sign In</span>
+          <i class="fa-solid fa-arrow-right-to-bracket" id="btnIcon"></i>
+          <svg id="btnSpinner" class="hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+        </button>
+      </form>
+
+      <p class="mt-6 text-center text-xs text-slate-500">
+        Use your company LDAP credentials to sign in.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <p class="mt-6 text-center text-xs text-slate-600">
+      &copy; {{ now.year }} Company Internal Portal
+    </p>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script>
+    // Password visibility toggle
+    const toggleBtn = document.getElementById('togglePwd');
+    const pwdInput  = document.getElementById('password');
+    const eyeIcon   = document.getElementById('eyeIcon');
+    toggleBtn.addEventListener('click', () => {
+      const visible = pwdInput.type === 'text';
+      pwdInput.type = visible ? 'password' : 'text';
+      eyeIcon.className = visible ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+    });
+
+    // Loading state on submit
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      const btn     = document.getElementById('submitBtn');
+      const text    = document.getElementById('btnText');
+      const icon    = document.getElementById('btnIcon');
+      const spinner = document.getElementById('btnSpinner');
+      btn.disabled = true;
+      text.textContent = 'Signing in…';
+      icon.classList.add('hidden');
+      spinner.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>

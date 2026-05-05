@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+certs/ca/ca.key
+certs/clients/
+cert_manager.db
+logs/
+*.p12
+.venv/
+venv/
