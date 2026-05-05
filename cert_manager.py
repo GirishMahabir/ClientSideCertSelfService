@@ -40,7 +40,7 @@ def _subject(cn, org=None, ou=None, country=None, state=None, locality=None,
 
 
 def _gen_key():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
 
 def _save_key(key, path: Path, password: bytes | None = None):
@@ -107,7 +107,7 @@ def init_ca():
         .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
         .add_extension(
             x509.KeyUsage(
-                digital_signature=True, content_commitment=False,
+                digital_signature=False, content_commitment=False,
                 key_encipherment=False, data_encipherment=False,
                 key_agreement=False, key_cert_sign=True,
                 crl_sign=True, encipher_only=False, decipher_only=False,
@@ -167,7 +167,7 @@ def issue_client_cert(username: str, display_name: str, email: str | None):
         )
         .add_extension(
             x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]),
-            critical=False,
+            critical=True,
         )
         .add_extension(
             x509.SubjectKeyIdentifier.from_public_key(client_key.public_key()),
@@ -275,6 +275,10 @@ def generate_crl() -> None:
         .issuer_name(ca_cert.subject)
         .last_update(now)
         .next_update(next_update)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_cert.public_key()),
+            critical=False,
+        )
     )
 
     revoked_rows = db.get_revoked_certs_for_crl()

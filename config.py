@@ -9,6 +9,7 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-secret-key-in-production")
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
     PERMANENT_SESSION_LIFETIME = timedelta(
         hours=int(os.environ.get("SESSION_LIFETIME_HOURS", "8"))
     )

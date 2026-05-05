@@ -18,10 +18,10 @@ runs its own internal CA.
 | **Login** | LDAP authentication with admin/user group separation |
 | **Client portal** | Generate a personal certificate, download as PKCS#12 (`.p12`), per-OS install guide |
 | **Admin dashboard** | View all certificates, revoke with reason, one-click renew, CRL download |
-| **PKI** | RSA-2048 internal CA, automatic CRL regeneration on every revocation |
+| **PKI** | RSA-4096 internal CA, automatic CRL regeneration on every revocation |
 | **Audit log** | Every login, cert issue, revocation, and download is recorded |
 | **Storage** | SQLite database + PEM files on disk.  No external dependencies |
-| **Security** | CSRF protection, HttpOnly/SameSite session cookies, 8-hour session timeout, open-redirect guard |
+| **Security** | CSRF protection, HttpOnly/SameSite/Secure session cookies, login rate limiting, 8-hour session timeout, open-redirect guard |
 
 ---
 
@@ -320,12 +320,37 @@ sudo systemctl enable --now certportal
 ### Security checklist for production
 
 - [ ] Set a strong, random `SECRET_KEY` in `.env`
-- [ ] Set `SESSION_COOKIE_SECURE=True` if serving over HTTPS (add to `config.py` or `.env`)
+- [ ] Set `SESSION_COOKIE_SECURE=true` in `.env` (default; disable only for local HTTP dev)
 - [ ] Restrict filesystem permissions on `certs/ca/ca.key` (`chmod 600`)
 - [ ] Put the portal itself behind Nginx (no client cert required on the portal — users need to reach it to get their cert)
 - [ ] Set `FLASK_DEBUG=false`
 - [ ] Rotate logs — the rotating file handler keeps 5 × 10 MB files by default
 - [ ] Back up `cert_manager.db` and `certs/ca/` regularly
+- [ ] Consider encrypting the volume that holds `certs/` at rest for high-security environments
+
+---
+
+## Security Notes
+
+### Private key storage model
+
+| File | Encrypted on disk? | Protection |
+|---|---|---|
+| `certs/ca/ca.key` | No | `chmod 0o600`; server process only |
+| `certs/clients/<user>/key.pem` | No | `chmod 0o600`; server process only |
+| Downloaded `.p12` bundle | **Yes** — AES-256 + PBKDF2-SHA256 | Password chosen by the user (min 12 chars) |
+
+Client private keys are stored as unencrypted PEM files on the server. This is by design: the server must retain the key so users can re-download their PKCS#12 bundle at any time (with any new password) without needing to regenerate a certificate. The files are restricted to `0o600` and live outside the web root. The downloaded `.p12` is always password-protected.
+
+If a one-time download model is acceptable for your environment, you could delete the key after the first download — but that would prevent re-downloads and require re-issuance.
+
+### Certificate key strength
+
+All RSA keys (CA and client certificates) use **4096-bit** keys signed with SHA-256.
+
+### Login brute-force protection
+
+POST requests to `/login` are rate-limited to **10 per minute per source IP**. Exceeding this returns `HTTP 429 Too Many Requests`.
 
 ---
 

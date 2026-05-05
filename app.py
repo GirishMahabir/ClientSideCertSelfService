@@ -11,6 +11,8 @@ from flask import (
     Flask, Blueprint, render_template, request, redirect, url_for,
     session, flash, send_file, abort,
 )
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 
 from config import Config
@@ -19,6 +21,7 @@ import cert_manager as cm
 import database as db
 
 csrf = CSRFProtect()
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 # ---------------------------------------------------------------------------
 # Application factory
@@ -29,7 +32,14 @@ def create_app():
     app.config.from_object(Config)
 
     csrf.init_app(app)
+    limiter.init_app(app)
     _setup_logging(app)
+
+    if app.config["SECRET_KEY"] == "change-this-secret-key-in-production":
+        logging.getLogger(__name__).critical(
+            "SECRET_KEY is set to the default insecure value. "
+            "Set a strong SECRET_KEY in your .env before using this in production."
+        )
     db.init_db()
     cm.init_ca()
 
@@ -132,6 +142,7 @@ def index():
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if session.get("username"):
         return redirect(url_for("auth.index"))
@@ -237,8 +248,8 @@ def download():
     if not p12_password:
         flash("You must enter a password to protect your certificate bundle.", "warning")
         return redirect(url_for("client.dashboard"))
-    if len(p12_password) < 4:
-        flash("Password must be at least 4 characters.", "warning")
+    if len(p12_password) < 12:
+        flash("Password must be at least 12 characters.", "warning")
         return redirect(url_for("client.dashboard"))
 
     try:
