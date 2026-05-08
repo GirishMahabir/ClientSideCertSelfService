@@ -11,6 +11,7 @@ from flask import (
     Flask, Blueprint, render_template, request, redirect, url_for,
     session, flash, send_file, abort,
 )
+from apscheduler.schedulers.background import BackgroundScheduler
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -19,6 +20,7 @@ from config import Config
 import auth as ldap_auth
 import cert_manager as cm
 import database as db
+from reminders import send_expiry_reminders
 
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
@@ -34,6 +36,9 @@ def create_app():
     csrf.init_app(app)
     limiter.init_app(app)
     _setup_logging(app)
+
+    if app.config.get("REMINDER_ENABLED"):
+        _start_reminder_scheduler(app)
 
     if app.config["SECRET_KEY"] == "change-this-secret-key-in-production":
         logging.getLogger(__name__).critical(
@@ -67,6 +72,20 @@ def create_app():
                                message="An internal server error occurred."), 500
 
     return app
+
+
+def _start_reminder_scheduler(app):
+    """Start a 24-hour background job that sends expiry reminder emails."""
+    scheduler = BackgroundScheduler(daemon=True)
+    scheduler.add_job(
+        send_expiry_reminders,
+        trigger="interval",
+        hours=24,
+        id="expiry_reminders",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logging.getLogger(__name__).info("Expiry reminder scheduler started (24h interval)")
 
 
 def _setup_logging(app):
@@ -316,6 +335,8 @@ def dashboard():
         audit_entries=audit_entries,
         expiry_fn=cm.days_until_expiry,
         warning_days=Config.EXPIRY_WARNING_DAYS,
+        validity_options=Config.CERT_VALIDITY_OPTIONS,
+        default_validity=Config.CLIENT_CERT_VALIDITY_DAYS,
     )
 
 
@@ -342,6 +363,11 @@ def renew(cert_id):
         flash("Certificate not found.", "warning")
         return redirect(url_for("admin.dashboard"))
 
+    validity_raw = request.form.get("validity_days", "").strip()
+    validity_days = int(validity_raw) if validity_raw.isdigit() else None
+    if validity_days and validity_days not in Config.CERT_VALIDITY_OPTIONS:
+        validity_days = None
+
     try:
         if record["status"] == "active":
             cm.revoke_cert(cert_id, revoked_by=session["username"], reason="superseded")
@@ -349,6 +375,7 @@ def renew(cert_id):
             username=record["username"],
             display_name=record["common_name"],
             email=record["email"] or None,
+            validity_days=validity_days,
         )
         db.audit(session["username"], "RENEW_CERT",
                  target=record["serial"],

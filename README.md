@@ -173,6 +173,8 @@ All settings are read from the `.env` file (or real environment variables).
 |---|---|---|
 | `SECRET_KEY` | `change-me-…` | Flask session signing key — **change in production** |
 | `SESSION_LIFETIME_HOURS` | `8` | How long a login session stays valid |
+| `SESSION_COOKIE_SECURE` | `true` | Set `false` only for local HTTP development |
+| `PORTAL_URL` | `http://localhost:5000` | Full URL included in reminder emails |
 
 ### LDAP
 
@@ -205,8 +207,22 @@ All settings are read from the `.env` file (or real environment variables).
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLIENT_CERT_VALIDITY_DAYS` | `365` | Client certificate lifetime |
-| `EXPIRY_WARNING_DAYS` | `30` | Days before expiry to show a warning banner |
+| `CLIENT_CERT_VALIDITY_DAYS` | `365` | Default client certificate lifetime (used when no override is chosen) |
+| `CERT_VALIDITY_OPTIONS` | `30,90,180,365,730` | Validity options (days) shown to admins in the Renew dropdown |
+| `EXPIRY_WARNING_DAYS` | `30` | Days before expiry to show a warning banner on the dashboard |
+
+### Email Reminders
+
+| Variable | Default | Description |
+|---|---|---|
+| `REMINDER_ENABLED` | `false` | Set `true` to activate email reminders |
+| `REMINDER_DAYS` | `30,7,1` | Days before expiry that trigger a reminder (one email per threshold per cert) |
+| `SMTP_HOST` | _(empty)_ | SMTP server hostname |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_USER` | _(empty)_ | SMTP login username (leave blank for unauthenticated relay) |
+| `SMTP_PASSWORD` | _(empty)_ | SMTP password |
+| `SMTP_FROM` | `certportal@example.com` | Sender address on reminder emails |
+| `SMTP_USE_TLS` | `true` | Use STARTTLS. Set `false` for plain SMTP relay |
 
 ### Paths
 
@@ -216,6 +232,53 @@ All settings are read from the `.env` file (or real environment variables).
 | `DB_PATH` | `cert_manager.db` | SQLite database file |
 | `LOG_PATH` | `logs/app.log` | Rotating log file (10 MB, 5 backups) |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+
+---
+
+## Email Reminders
+
+CertPortal can email users before their certificate expires. Reminders fire at
+configurable thresholds (default: 30 days, 7 days, and 1 day before expiry). Each
+threshold sends **exactly one email per certificate** — no duplicates even if the app
+restarts or runs multiple workers.
+
+### Enable reminders
+
+```env
+REMINDER_ENABLED=true
+SMTP_HOST=smtp.yourcompany.com
+SMTP_PORT=587
+SMTP_USER=certportal@yourcompany.com
+SMTP_PASSWORD=your-password
+SMTP_FROM=certportal@yourcompany.com
+PORTAL_URL=https://certportal.internal
+REMINDER_DAYS=30,7,1
+```
+
+Reminders are sent to the email address stored on each certificate (pulled from the
+LDAP `mail` attribute at issuance time). If a user has no email stored, the reminder
+is skipped and logged as a warning.
+
+### Scheduling
+
+**Embedded scheduler (default)** — when `REMINDER_ENABLED=true` the app runs a
+background job every 24 hours automatically. No extra process needed.
+
+> **Multi-worker note:** if running gunicorn with multiple workers, only one worker
+> will send reminders per 24-hour window. This is enforced by a database lock
+> (`scheduler_heartbeat` table) — the first worker to run the job wins; others skip.
+
+**Cron / standalone script (alternative)** — if you prefer to trigger reminders
+externally (e.g. you run the app with many workers and want tighter control), disable
+the embedded job and schedule `send_reminders.py` instead:
+
+```bash
+# In your .env
+REMINDER_ENABLED=true   # still required to send emails
+
+# crontab — runs at 07:00 every day
+0 7 * * * /opt/certportal/.venv/bin/python /opt/certportal/send_reminders.py
+```
 
 ---
 

@@ -132,14 +132,13 @@ def init_ca():
 # Client certificate issuance
 # ---------------------------------------------------------------------------
 
-def issue_client_cert(username: str, display_name: str, email: str | None):
-    """
-    Generate a new client cert for *username*, sign it with the CA, persist
-    the PEM files, record in the database, and return the cert record dict.
-    """
+def issue_client_cert(username: str, display_name: str, email: str | None,
+                      validity_days: int | None = None):
+    """Generate a new client cert, sign with CA, persist PEM files, record in DB."""
     ca_cert, ca_key = _load_ca()
     now = datetime.now(timezone.utc)
-    expires = now + timedelta(days=Config.CLIENT_CERT_VALIDITY_DAYS)
+    days = validity_days or Config.CLIENT_CERT_VALIDITY_DAYS
+    expires = now + timedelta(days=days)
     serial = x509.random_serial_number()
 
     client_key = _gen_key()
@@ -207,7 +206,7 @@ def issue_client_cert(username: str, display_name: str, email: str | None):
         key_path=str(key_path),
     )
     db.audit(username, "ISSUE_CERT", target=str(serial),
-             detail=f"cn={cn} expires={expires.date()}")
+             detail=f"cn={cn} expires={expires.date()} validity_days={days}")
 
     logger.info("Issued cert serial=%s for %s", serial, username)
     return db.get_cert_by_username(username)

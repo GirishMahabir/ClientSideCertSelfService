@@ -1,6 +1,6 @@
 import sqlite3
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,21 @@ def init_db():
                 detail    TEXT,
                 ip        TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS reminder_log (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                cert_serial    TEXT    NOT NULL,
+                threshold_days INTEGER NOT NULL,
+                sent_at        TEXT    NOT NULL,
+                UNIQUE(cert_serial, threshold_days)
+            );
+
+            CREATE TABLE IF NOT EXISTS scheduler_heartbeat (
+                id       INTEGER PRIMARY KEY CHECK (id = 1),
+                last_run TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'
+            );
+            INSERT OR IGNORE INTO scheduler_heartbeat(id, last_run)
+                VALUES (1, '1970-01-01T00:00:00+00:00');
             """
         )
     logger.info("Database initialised at %s", Config.DB_PATH)
@@ -151,3 +166,62 @@ def get_audit_log(limit=200):
             "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------- reminder helpers ----------
+
+def get_certs_expiring_within(days: int) -> list[dict]:
+    """Return active certs that expire between now and now+days (inclusive)."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now + timedelta(days=days)).isoformat()
+    now_iso = now.isoformat()
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM certificates
+               WHERE status = 'active'
+                 AND expires_at > :now
+                 AND expires_at <= :cutoff
+               ORDER BY expires_at ASC""",
+            {"now": now_iso, "cutoff": cutoff},
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def has_reminder_been_sent(serial: str, threshold_days: int) -> bool:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM reminder_log WHERE cert_serial=? AND threshold_days=?",
+            (str(serial), threshold_days),
+        ).fetchone()
+    return row is not None
+
+
+def record_reminder_sent(serial: str, threshold_days: int) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO reminder_log(cert_serial, threshold_days, sent_at)
+               VALUES (?, ?, ?)""",
+            (str(serial), threshold_days, now),
+        )
+
+
+def try_acquire_scheduler_lock() -> bool:
+    """Atomic single-row update; returns True if this call won the lock.
+
+    Prevents duplicate reminder sends when multiple gunicorn workers each run
+    their own APScheduler instance. The lock expires after 23 hours so the next
+    daily run can proceed.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=23)).isoformat()
+    now_iso = now.isoformat()
+    with get_connection() as conn:
+        result = conn.execute(
+            """UPDATE scheduler_heartbeat
+               SET last_run = :now
+               WHERE id = 1 AND last_run < :cutoff""",
+            {"now": now_iso, "cutoff": cutoff},
+        )
+        conn.commit()
+    return result.rowcount == 1

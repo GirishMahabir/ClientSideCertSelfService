@@ -60,3 +60,22 @@ class Config:
     CLIENT_CERT_VALIDITY_DAYS = int(os.environ.get("CLIENT_CERT_VALIDITY_DAYS", "365"))
     # Warn when cert expires within this many days
     EXPIRY_WARNING_DAYS = int(os.environ.get("EXPIRY_WARNING_DAYS", "30"))
+    # Validity options offered to admins in the renew dropdown (days)
+    CERT_VALIDITY_OPTIONS = [
+        int(d) for d in
+        os.environ.get("CERT_VALIDITY_OPTIONS", "30,90,180,365,730").split(",")
+    ]
+
+    # SMTP / email reminders
+    SMTP_HOST     = os.environ.get("SMTP_HOST", "")
+    SMTP_PORT     = int(os.environ.get("SMTP_PORT", "587"))
+    SMTP_USER     = os.environ.get("SMTP_USER", "")
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+    SMTP_FROM     = os.environ.get("SMTP_FROM", "certportal@example.com")
+    SMTP_USE_TLS  = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+
+    REMINDER_ENABLED = os.environ.get("REMINDER_ENABLED", "false").lower() == "true"
+    REMINDER_DAYS    = [
+        int(d) for d in os.environ.get("REMINDER_DAYS", "30,7,1").split(",")
+    ]
+    PORTAL_URL = os.environ.get("PORTAL_URL", "http://localhost:5000")
