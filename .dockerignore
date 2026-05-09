@@ -1,0 +1,31 @@
+# Secrets and local config — never bake into the image
+.env
+
+# Runtime-generated state — mounted as a volume at /data
+certs/ca/ca.key
+certs/ca/ca.crt
+certs/ca/crl.pem
+certs/clients/
+cert_manager.db
+logs/
+*.p12
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo

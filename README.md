@@ -46,7 +46,118 @@ runs its own internal CA.
 
 ---
 
-## Getting Started
+## Docker (Recommended)
+
+The fastest way to run CertPortal. The CA and database are initialised
+automatically on first start; everything persists in a named Docker volume.
+
+### Quick start
+
+```bash
+# 1. Copy and edit the environment file
+cp .env.example .env
+#    Set at minimum: SECRET_KEY, LDAP_SERVER, LDAP_BASE_DN,
+#                    LDAP_ADMIN_GROUP_DN, LDAP_USER_GROUP_DN
+
+# 2. Build and start
+docker compose up -d
+
+# 3. Open the portal
+open http://localhost:5000
+```
+
+That's it. The CA is generated on first boot and stored in the `certportal_data`
+Docker volume. Subsequent restarts reuse the existing CA and database.
+
+### Environment variables in Docker
+
+All settings from `.env.example` work the same way. The container pins three
+paths internally (overriding `.env`) so persistent data always goes to the volume:
+
+| Variable | Container value |
+|---|---|
+| `CERTS_DIR` | `/data/certs` |
+| `DB_PATH` | `/data/cert_manager.db` |
+| `LOG_PATH` | `/data/logs/app.log` |
+
+`SESSION_COOKIE_SECURE` defaults to `false` in the compose file so you can reach
+the portal over plain HTTP locally. Set it to `true` (and add a TLS-terminating
+reverse proxy) before exposing the portal to users.
+
+### Useful commands
+
+```bash
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Stop and delete all data (CA, certs, DB)
+docker compose down -v
+
+# Rebuild after code changes
+docker compose build && docker compose up -d
+
+# Open a shell in the running container
+docker compose exec certportal bash
+```
+
+### Backup and restore
+
+All state lives in the `certportal_data` volume. To back it up:
+
+```bash
+docker run --rm \
+  -v certportal_certportal_data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/certportal-backup.tar.gz -C /data .
+```
+
+To restore:
+
+```bash
+docker compose down
+docker run --rm \
+  -v certportal_certportal_data:/data \
+  -v $(pwd):/backup \
+  alpine sh -c "rm -rf /data/* && tar xzf /backup/certportal-backup.tar.gz -C /data"
+docker compose up -d
+```
+
+### Production: adding a TLS reverse proxy
+
+For production the portal should be behind a TLS-terminating reverse proxy.
+Example with nginx on the Docker host:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name certportal.internal;
+
+    ssl_certificate     /etc/nginx/ssl/portal.crt;
+    ssl_certificate_key /etc/nginx/ssl/portal.key;
+
+    location / {
+        proxy_pass       http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Then set in `.env`:
+```env
+SESSION_COOKIE_SECURE=true   # overrides the compose default
+PORTAL_URL=https://certportal.internal
+```
+
+And restart: `docker compose up -d`
+
+---
+
+## Getting Started (without Docker)
 
 ### 1. Clone the repository
 

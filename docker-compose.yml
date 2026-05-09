@@ -1,0 +1,37 @@
+services:
+  certportal:
+    build: .
+    ports:
+      - "5000:5000"
+
+    # All persistent state lives in a single named volume mounted at /data.
+    # The environment block below pins the paths inside the container.
+    # These override anything in .env so the container always writes to /data.
+    volumes:
+      - certportal_data:/data
+
+    environment:
+      CERTS_DIR: /data/certs
+      DB_PATH: /data/cert_manager.db
+      LOG_PATH: /data/logs/app.log
+      # Disable secure cookie so the portal is reachable over plain HTTP locally.
+      # Set to 'true' (and add a TLS-terminating reverse proxy) in production.
+      SESSION_COOKIE_SECURE: "false"
+
+    # Place your secrets and site-specific settings in .env (copy from .env.example).
+    # Any variable not listed above can live in .env.
+    env_file:
+      - .env
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/login')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  certportal_data:
