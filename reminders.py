@@ -1,11 +1,10 @@
 """Expiry reminder emails — called by the embedded APScheduler job or send_reminders.py."""
 import logging
-import smtplib
 from datetime import datetime, timezone
-from email.message import EmailMessage
 
 from config import Config
 import database as db
+import mailer
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 def send_expiry_reminders() -> None:
     if not Config.REMINDER_ENABLED:
         return
-    if not Config.SMTP_HOST:
+    if not mailer.smtp_available():
         logger.warning("REMINDER_ENABLED=true but SMTP_HOST is not set — skipping")
         return
     if not db.try_acquire_scheduler_lock():
@@ -46,7 +45,7 @@ def send_expiry_reminders() -> None:
                 db.record_reminder_sent(cert["serial"], threshold)
                 skipped_no_email += 1
                 continue
-            _send_email(cert, days_left, threshold)
+            _send_reminder(cert, days_left, threshold)
             db.record_reminder_sent(cert["serial"], threshold)
             sent += 1
 
@@ -56,7 +55,7 @@ def send_expiry_reminders() -> None:
     )
 
 
-def _send_email(cert: dict, days_left: int, threshold: int) -> None:
+def _send_reminder(cert: dict, days_left: int, threshold: int) -> None:
     plural = "s" if days_left != 1 else ""
     subject = f"[CertPortal] Your certificate expires in {days_left} day{plural}"
     body = (
@@ -67,19 +66,8 @@ def _send_email(cert: dict, days_left: int, threshold: int) -> None:
         f"once an administrator has renewed it for you.\n\n"
         f"If you need help, contact your IT administrator.\n"
     )
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = Config.SMTP_FROM
-    msg["To"] = cert["email"]
-    msg.set_content(body)
-
     try:
-        with smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT) as smtp:
-            if Config.SMTP_USE_TLS:
-                smtp.starttls()
-            if Config.SMTP_USER:
-                smtp.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
-            smtp.send_message(msg)
+        mailer.send_plain(cert["email"], subject, body)
         logger.info(
             "Reminder sent to %s (threshold=%dd, days_left=%d)",
             cert["email"], threshold, days_left,

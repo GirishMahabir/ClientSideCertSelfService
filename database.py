@@ -62,6 +62,18 @@ def init_db():
             );
             INSERT OR IGNORE INTO scheduler_heartbeat(id, last_run)
                 VALUES (1, '1970-01-01T00:00:00+00:00');
+
+            CREATE TABLE IF NOT EXISTS service_accounts (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT    NOT NULL UNIQUE,
+                key_prefix   TEXT    NOT NULL,
+                key_hash     TEXT    NOT NULL UNIQUE,
+                scopes       TEXT    NOT NULL DEFAULT '',
+                created_by   TEXT    NOT NULL,
+                created_at   TEXT    NOT NULL,
+                last_used_at TEXT,
+                is_active    INTEGER NOT NULL DEFAULT 1
+            );
             """
         )
     logger.info("Database initialised at %s", Config.DB_PATH)
@@ -203,6 +215,74 @@ def record_reminder_sent(serial: str, threshold_days: int) -> None:
             """INSERT OR IGNORE INTO reminder_log(cert_serial, threshold_days, sent_at)
                VALUES (?, ?, ?)""",
             (str(serial), threshold_days, now),
+        )
+
+
+def get_last_cert_email(serial: str) -> dict | None:
+    """Return the most recent EMAIL_CERT audit entry for a certificate serial."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT * FROM audit_log
+               WHERE action = 'EMAIL_CERT' AND target = ?
+               ORDER BY id DESC LIMIT 1""",
+            (str(serial),),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ---------- service account helpers ----------
+
+def create_service_account(name: str, key_prefix: str, key_hash: str,
+                            scopes: str, created_by: str) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO service_accounts
+               (name, key_prefix, key_hash, scopes, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, key_prefix, key_hash, scopes, created_by, now),
+        )
+    logger.info("Service account created: name=%s by=%s", name, created_by)
+    return get_service_account_by_name(name)
+
+
+def get_service_account_by_name(name: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM service_accounts WHERE name=?", (name,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_service_account_by_hash(key_hash: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM service_accounts WHERE key_hash=?", (key_hash,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_all_service_accounts() -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM service_accounts ORDER BY id DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def deactivate_service_account(account_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE service_accounts SET is_active=0 WHERE id=?", (account_id,)
+        )
+    logger.info("Service account id=%s deactivated", account_id)
+
+
+def touch_service_account(account_id: int) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE service_accounts SET last_used_at=? WHERE id=?", (now, account_id)
         )
 
 

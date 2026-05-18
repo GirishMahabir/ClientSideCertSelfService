@@ -204,6 +204,77 @@
     </div>
   </div>
 
+  <!-- Service Accounts -->
+  <div class="glass-card rounded-2xl overflow-hidden mb-8">
+    <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+      <h3 class="font-semibold text-white">
+        <i class="fa-solid fa-robot text-indigo-400 mr-2"></i>API Service Accounts
+      </h3>
+      <button onclick="openCreateSAModal()" class="btn-primary text-sm">
+        <i class="fa-solid fa-plus mr-1.5"></i>Create
+      </button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/10 text-xs text-slate-500 uppercase tracking-wider">
+            <th class="text-left px-5 py-3">Name</th>
+            <th class="text-left px-5 py-3">Key Prefix</th>
+            <th class="text-left px-5 py-3">Scopes</th>
+            <th class="text-left px-5 py-3 hidden md:table-cell">Created</th>
+            <th class="text-left px-5 py-3 hidden md:table-cell">Last Used</th>
+            <th class="text-left px-5 py-3">Status</th>
+            <th class="text-right px-5 py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sa in service_accounts %}
+          <tr class="border-b border-white/5 hover:bg-white/5">
+            <td class="px-5 py-3 font-medium text-white">{{ sa.name }}</td>
+            <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ sa.key_prefix }}…</td>
+            <td class="px-5 py-3">
+              {% for scope in sa.scopes.split(',') if scope %}
+                <span class="badge badge-info text-xs">{{ scope }}</span>
+              {% endfor %}
+            </td>
+            <td class="px-5 py-3 text-xs text-slate-500 hidden md:table-cell">{{ sa.created_at[:10] }}</td>
+            <td class="px-5 py-3 text-xs text-slate-500 hidden md:table-cell">
+              {{ sa.last_used_at[:10] if sa.last_used_at else '—' }}
+            </td>
+            <td class="px-5 py-3">
+              {% if sa.is_active %}
+                <span class="badge badge-success">Active</span>
+              {% else %}
+                <span class="badge badge-danger">Revoked</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-right">
+              {% if sa.is_active %}
+              <form method="POST"
+                    action="{{ url_for('admin.revoke_service_account', account_id=sa.id) }}"
+                    class="inline"
+                    onsubmit="return confirm('Revoke service account \'{{ sa.name }}\'?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button class="action-btn text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        title="Revoke">
+                  <i class="fa-solid fa-ban"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="px-5 py-8 text-center text-slate-500 text-sm">
+              No service accounts yet. Create one to enable API access.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Audit log -->
   <div class="glass-card rounded-2xl overflow-hidden">
     <div class="px-5 py-4 border-b border-white/10">
@@ -318,6 +389,76 @@
     </form>
   </div>
 </div>
+
+<!-- Create Service Account modal -->
+<div id="createSAModal"
+     class="fixed inset-0 z-50 hidden items-center justify-center px-4"
+     role="dialog" aria-modal="true" aria-labelledby="createSAModalTitle">
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeCreateSAModal()"></div>
+  <div class="relative glass-card rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <h4 id="createSAModalTitle" class="text-lg font-semibold text-white mb-1">
+      <i class="fa-solid fa-robot text-indigo-400 mr-2"></i>New Service Account
+    </h4>
+    <p class="text-sm text-slate-400 mb-5">
+      API keys are shown <strong class="text-white">once</strong> on creation and cannot be recovered.
+    </p>
+    <form method="POST" action="{{ url_for('admin.create_service_account') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <label class="block text-sm font-medium text-slate-300 mb-1.5">Name</label>
+      <input name="name" type="text" required
+             class="input-field w-full mb-4"
+             placeholder="e.g. nginx-crl-puller" />
+      <label class="block text-sm font-medium text-slate-300 mb-2">Scopes</label>
+      <div class="space-y-2 mb-5">
+        <label class="flex items-center gap-2 text-slate-300 text-sm cursor-pointer">
+          <input type="checkbox" name="scopes" value="crl:read" checked
+                 class="rounded border-slate-600 bg-slate-800 text-indigo-500" />
+          <span><code class="code-tag">crl:read</code> — GET /api/v1/crl</span>
+        </label>
+        <label class="flex items-center gap-2 text-slate-300 text-sm cursor-pointer">
+          <input type="checkbox" name="scopes" value="ca:read"
+                 class="rounded border-slate-600 bg-slate-800 text-indigo-500" />
+          <span><code class="code-tag">ca:read</code> — GET /api/v1/ca</span>
+        </label>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" onclick="closeCreateSAModal()"
+                class="flex-1 btn-secondary">Cancel</button>
+        <button type="submit" class="flex-1 btn-primary">
+          <i class="fa-solid fa-plus mr-1.5"></i>Create
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- API Key reveal modal (shown once after creation) -->
+{% if new_api_key %}
+<div id="keyRevealModal"
+     class="fixed inset-0 z-50 flex items-center justify-center px-4"
+     role="dialog" aria-modal="true">
+  <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+  <div class="relative glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl">
+    <h4 class="text-lg font-semibold text-white mb-2">
+      <i class="fa-solid fa-key text-amber-400 mr-2"></i>Copy Your API Key
+    </h4>
+    <p class="text-sm text-slate-400 mb-4">
+      This key will <strong class="text-white">not be shown again</strong>.
+      Copy it now and store it securely (e.g. a secrets manager or vault).
+    </p>
+    <div class="bg-slate-900 rounded-xl p-3 font-mono text-sm text-emerald-400 break-all mb-4 select-all border border-white/10">
+      {{ new_api_key }}
+    </div>
+    <button onclick="copyKey('{{ new_api_key }}')" class="btn-secondary w-full mb-3">
+      <i class="fa-solid fa-copy mr-1.5"></i>Copy to Clipboard
+    </button>
+    <button onclick="document.getElementById('keyRevealModal').classList.add('hidden')"
+            class="btn-primary w-full">
+      I've saved it
+    </button>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -349,9 +490,33 @@ function closeRevokeModal() {
   modal.classList.add('hidden');
   modal.classList.remove('flex');
 }
+// Create Service Account modal
+function openCreateSAModal() {
+  const modal = document.getElementById('createSAModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+function closeCreateSAModal() {
+  const modal = document.getElementById('createSAModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+// Copy API key to clipboard
+function copyKey(key) {
+  navigator.clipboard.writeText(key).then(() => {
+    const btn = event.currentTarget;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-check mr-1.5"></i>Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  }).catch(() => alert('Copy failed — please select and copy the key manually.'));
+}
+
 // ESC closes modals
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeRevokeModal(); closeRenewModal(); }
+  if (e.key === 'Escape') {
+    closeRevokeModal(); closeRenewModal(); closeCreateSAModal();
+  }
 });
 
 // Table search + filter

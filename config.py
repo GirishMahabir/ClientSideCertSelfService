@@ -79,3 +79,6 @@ class Config:
         int(d) for d in os.environ.get("REMINDER_DAYS", "30,7,1").split(",")
     ]
     PORTAL_URL = os.environ.get("PORTAL_URL", "http://localhost:5000")
+
+    # When true: cert generation auto-emails the .p12 bundle; download form is hidden
+    CERT_EMAIL_DELIVERY = os.environ.get("CERT_EMAIL_DELIVERY", "false").lower() == "true"

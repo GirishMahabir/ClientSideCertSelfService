@@ -22,6 +22,8 @@ runs its own internal CA.
 | **Audit log** | Every login, cert issue, revocation, and download is recorded |
 | **Storage** | SQLite database + PEM files on disk.  No external dependencies |
 | **Security** | CSRF protection, HttpOnly/SameSite/Secure session cookies, login rate limiting, 8-hour session timeout, open-redirect guard |
+| **REST API** | Machine-to-machine access for CRL/CA polling; admin-managed API keys with per-scope access control |
+| **Email delivery** | Optional: cert generated → `.p12` auto-emailed to user; "Resend" button on dashboard |
 
 ---
 
@@ -562,6 +564,59 @@ POST requests to `/login` are rate-limited to **10 per minute per source IP**. E
 ├── logs/               # Rotating log file (gitignored)
 └── cert_manager.db     # SQLite database (gitignored)
 ```
+
+---
+
+## REST API
+
+The portal exposes a small machine-to-machine API for automated CRL and CA cert polling.
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/health` | None | Liveness check — returns `{"status":"ok"}` |
+| `GET` | `/api/v1/crl` | `crl:read` | Current CRL in PEM format |
+| `GET` | `/api/v1/ca` | `ca:read` | CA certificate in PEM format |
+
+### Authentication
+
+Pass the API key in either header:
+
+```
+X-API-Key: sk_<your-key>
+Authorization: Bearer sk_<your-key>
+```
+
+### Managing Service Accounts
+
+Log in as admin → **Admin Dashboard** → **API Service Accounts** → **Create**.
+Choose the scopes required, submit — the raw key is displayed once and cannot be recovered.
+To revoke a key, click the ban icon next to the service account.
+
+### nginx CRL Auto-Pull (cron example)
+
+```bash
+# Pull a fresh CRL every 5 minutes and reload nginx
+*/5 * * * * curl -sf \
+  -H "X-API-Key: sk_<your-key>" \
+  https://certportal.internal/api/v1/crl \
+  -o /etc/nginx/ssl/crl.pem \
+  && nginx -s reload
+```
+
+---
+
+## Email Certificate Delivery
+
+Set `CERT_EMAIL_DELIVERY=true` (requires SMTP configuration) to switch the portal from
+manual download mode to email delivery mode:
+
+- When a user generates a certificate, the `.p12` bundle is auto-emailed to their LDAP
+  `mail` address with an auto-generated password included in the email body.
+- The download form on the client dashboard is replaced by a **Resend** button that
+  re-emails the bundle with a fresh password.
+- All email sends are recorded in the audit log as `EMAIL_CERT` events.
 
 ---
 

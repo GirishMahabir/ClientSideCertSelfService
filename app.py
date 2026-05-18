@@ -3,6 +3,7 @@ import io
 import logging
 import logging.handlers
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -16,10 +17,13 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 
+from api import api_bp
 from config import Config
+import api_key
 import auth as ldap_auth
 import cert_manager as cm
 import database as db
+import mailer
 from reminders import send_expiry_reminders
 
 csrf = CSRFProtect()
@@ -51,6 +55,8 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(client_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(api_bp)
+    csrf.exempt(api_bp)   # API uses key auth, not session CSRF
 
     @app.context_processor
     def inject_globals():
@@ -220,14 +226,19 @@ def dashboard():
     user = _current_user()
     cert = db.get_cert_by_username(user["username"])
     expiry_days = None
+    last_emailed = None
     if cert:
         expiry_days = cm.days_until_expiry(cert["expires_at"])
+        if Config.CERT_EMAIL_DELIVERY:
+            last_emailed = db.get_last_cert_email(cert["serial"])
     return render_template(
         "client/dashboard.html",
         user=user,
         cert=cert,
         expiry_days=expiry_days,
         warning_days=Config.EXPIRY_WARNING_DAYS,
+        cert_email_delivery=Config.CERT_EMAIL_DELIVERY,
+        last_emailed=last_emailed,
     )
 
 
@@ -246,11 +257,57 @@ def generate():
             display_name=user["display_name"] or user["username"],
             email=user["email"] or None,
         )
-        flash("Certificate generated successfully. Download it below.", "success")
+        if Config.CERT_EMAIL_DELIVERY:
+            cert = db.get_cert_by_username(user["username"])
+            if user["email"] and cert:
+                p12_password = secrets.token_urlsafe(16)
+                p12_bytes = cm.build_pkcs12(cert, p12_password)
+                mailer.send_cert_bundle(
+                    user["email"], user["username"],
+                    user["display_name"] or user["username"],
+                    p12_bytes, p12_password,
+                )
+                db.audit(user["username"], "EMAIL_CERT",
+                         target=cert["serial"], ip=request.remote_addr)
+                flash("Certificate generated and sent to your email.", "success")
+            else:
+                flash("Certificate generated but no email address found — contact an admin to retrieve it.", "warning")
+        else:
+            flash("Certificate generated successfully. Download it below.", "success")
     except Exception as exc:
         logging.getLogger(__name__).exception("Cert generation failed for %s", user["username"])
         flash(f"Certificate generation failed: {exc}", "danger")
 
+    return redirect(url_for("client.dashboard"))
+
+
+@client_bp.route("/resend-cert", methods=["POST"])
+@login_required
+def resend_cert():
+    if not Config.CERT_EMAIL_DELIVERY:
+        abort(404)
+    user = _current_user()
+    if not user["email"]:
+        flash("No email address on your account. Contact an administrator.", "danger")
+        return redirect(url_for("client.dashboard"))
+    cert = db.get_cert_by_username(user["username"])
+    if not cert:
+        flash("No active certificate found.", "warning")
+        return redirect(url_for("client.dashboard"))
+    try:
+        p12_password = secrets.token_urlsafe(16)
+        p12_bytes = cm.build_pkcs12(cert, p12_password)
+        mailer.send_cert_bundle(
+            user["email"], user["username"],
+            user["display_name"] or user["username"],
+            p12_bytes, p12_password,
+        )
+        db.audit(user["username"], "EMAIL_CERT",
+                 target=cert["serial"], ip=request.remote_addr, detail="resend")
+        flash("Certificate resent to your email.", "success")
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Resend cert failed for %s", user["username"])
+        flash(f"Failed to resend certificate: {exc}", "danger")
     return redirect(url_for("client.dashboard"))
 
 
@@ -325,6 +382,8 @@ def dashboard():
 
     ca_info = cm.get_ca_info()
     audit_entries = db.get_audit_log(limit=50)
+    service_accounts = db.get_all_service_accounts()
+    new_api_key = session.pop("new_api_key", None)
 
     return render_template(
         "admin/dashboard.html",
@@ -337,6 +396,8 @@ def dashboard():
         warning_days=Config.EXPIRY_WARNING_DAYS,
         validity_options=Config.CERT_VALIDITY_OPTIONS,
         default_validity=Config.CLIENT_CERT_VALIDITY_DAYS,
+        service_accounts=service_accounts,
+        new_api_key=new_api_key,
     )
 
 
@@ -414,6 +475,36 @@ def download_crl():
         as_attachment=True,
         download_name="crl.pem",
     )
+
+
+@admin_bp.route("/service-accounts", methods=["POST"])
+@admin_required
+def create_service_account():
+    name = request.form.get("name", "").strip()
+    scopes = ",".join(s for s in request.form.getlist("scopes") if s)
+    if not name:
+        flash("Service account name is required.", "warning")
+        return redirect(url_for("admin.dashboard"))
+    try:
+        raw_key, key_hash = api_key.generate()
+        db.create_service_account(name, raw_key[:10], key_hash, scopes, session["username"])
+        db.audit(session["username"], "CREATE_SERVICE_ACCOUNT",
+                 detail=f"name={name} scopes={scopes}")
+        session["new_api_key"] = raw_key
+        flash(f"Service account '{name}' created. Copy the key now — it won't be shown again.", "success")
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Create service account failed name=%s", name)
+        flash(f"Failed to create service account: {exc}", "danger")
+    return redirect(url_for("admin.dashboard"))
+
+
+@admin_bp.route("/service-accounts/<int:account_id>/revoke", methods=["POST"])
+@admin_required
+def revoke_service_account(account_id):
+    db.deactivate_service_account(account_id)
+    db.audit(session["username"], "REVOKE_SERVICE_ACCOUNT", target=str(account_id))
+    flash("Service account revoked.", "success")
+    return redirect(url_for("admin.dashboard"))
 
 
 @admin_bp.route("/init-ca", methods=["POST"])

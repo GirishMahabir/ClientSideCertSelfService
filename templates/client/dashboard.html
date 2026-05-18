@@ -104,8 +104,31 @@
       </div>
     </div>
 
-    <!-- Download form -->
+    <!-- Download / Email delivery -->
     <div class="border-t border-white/10 pt-5">
+    {% if cert_email_delivery %}
+      <!-- Email delivery mode -->
+      <h3 class="text-sm font-medium text-white mb-3">
+        <i class="fa-solid fa-envelope text-indigo-400 mr-1.5"></i>Certificate Delivery
+      </h3>
+      <p class="text-xs text-slate-400 mb-4">
+        Your certificate was sent as a password-protected <code class="code-tag">.p12</code> bundle to
+        <strong class="text-slate-300">{{ user.email or 'your registered email' }}</strong>.
+        The bundle password is included in that email.
+      </p>
+      {% if last_emailed %}
+      <p class="text-xs text-slate-500 mb-3">
+        Last sent: {{ last_emailed.ts[:19].replace('T', ' ') }} UTC
+      </p>
+      {% endif %}
+      <form method="POST" action="{{ url_for('client.resend_cert') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button type="submit" class="btn-secondary flex items-center gap-2">
+          <i class="fa-solid fa-paper-plane"></i>Resend to my email
+        </button>
+      </form>
+    {% else %}
+      <!-- Manual download mode -->
       <h3 class="text-sm font-medium text-white mb-3">
         <i class="fa-solid fa-download text-indigo-400 mr-1.5"></i>Download Certificate (PKCS#12 / .p12)
       </h3>
@@ -140,6 +163,7 @@
           Password must be at least 12 characters. You can download your certificate multiple times with different passwords.
         </p>
       </form>
+    {% endif %}
     </div>
   </div>
 
