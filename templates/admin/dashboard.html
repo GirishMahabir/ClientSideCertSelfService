@@ -11,6 +11,9 @@
       <p class="text-slate-400 text-sm mt-1">Manage all client certificates and CA configuration.</p>
     </div>
     <div class="flex gap-2 flex-wrap">
+      <a href="{{ url_for('client.dashboard') }}" class="btn-secondary text-sm">
+        <i class="fa-solid fa-id-card mr-1.5"></i>My Certificate
+      </a>
       <a href="{{ url_for('admin.download_ca') }}" class="btn-secondary text-sm">
         <i class="fa-solid fa-download mr-1.5"></i>Download CA
       </a>
@@ -449,7 +452,7 @@
     <div class="bg-slate-900 rounded-xl p-3 font-mono text-sm text-emerald-400 break-all mb-4 select-all border border-white/10">
       {{ new_api_key }}
     </div>
-    <button onclick="copyKey('{{ new_api_key }}')" class="btn-secondary w-full mb-3">
+    <button onclick="copyKey('{{ new_api_key }}', this)" class="btn-secondary w-full mb-3">
       <i class="fa-solid fa-copy mr-1.5"></i>Copy to Clipboard
     </button>
     <button onclick="document.getElementById('keyRevealModal').classList.add('hidden')"
@@ -502,14 +505,28 @@ function closeCreateSAModal() {
   modal.classList.remove('flex');
 }
 
-// Copy API key to clipboard
-function copyKey(key) {
-  navigator.clipboard.writeText(key).then(() => {
-    const btn = event.currentTarget;
-    const orig = btn.innerHTML;
+// Copy API key to clipboard (works on HTTP and HTTPS)
+function copyKey(key, btn) {
+  const orig = btn.innerHTML;
+  const markDone = () => {
     btn.innerHTML = '<i class="fa-solid fa-check mr-1.5"></i>Copied!';
     setTimeout(() => { btn.innerHTML = orig; }, 2000);
-  }).catch(() => alert('Copy failed — please select and copy the key manually.'));
+  };
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = key;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); markDone(); }
+    catch { alert('Copy failed — please select the key text above and copy it manually.'); }
+    document.body.removeChild(ta);
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(key).then(markDone).catch(fallback);
+  } else {
+    fallback();
+  }
 }
 
 // ESC closes modals
