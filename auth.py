@@ -54,7 +54,7 @@ def authenticate(username: str, password: str) -> AuthResult:
                 search_base=Config.LDAP_USER_DN,
                 search_filter=search_filter,
                 search_scope=SUBTREE,
-                attributes=["cn", "mail", "memberOf", "dn"],
+                attributes=["cn", "mail", "memberOf"],
             )
             if not conn.entries:
                 return AuthResult(ok=False, error="User not found in directory")
