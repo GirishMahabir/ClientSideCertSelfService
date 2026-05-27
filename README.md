@@ -620,6 +620,15 @@ manual download mode to email delivery mode:
 
 ---
 
+## Roadmap
+
+Pending features and improvements:
+
+- **Favicon** — the browser tab shows no icon; add a proper favicon so the app is recognisable in tabs and bookmarks.
+- **Branding / white-labelling** — replace hardcoded "Company" placeholders (CA subject, email sender name, portal title, etc.) with env vars so operators can set their real organisation name without touching code.
+
+---
+
 ## License
 
 Internal use.  Not for public distribution.
