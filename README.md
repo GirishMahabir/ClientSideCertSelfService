@@ -429,7 +429,12 @@ server {
     # ssl_crl /etc/nginx/ssl/crl.pem;
 
     location / {
-        # The verified client DN is available as a header if needed
+        # Block requests without a valid client certificate
+        if ($ssl_client_verify != SUCCESS) {
+            return 403;
+        }
+
+        # Optional: forward client cert info to the app
         proxy_set_header X-SSL-Client-DN   $ssl_client_s_dn;
         proxy_set_header X-SSL-Client-Cert $ssl_client_cert;
 
