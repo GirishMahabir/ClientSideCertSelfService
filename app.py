@@ -81,7 +81,7 @@ def create_app():
 
 
 def _start_reminder_scheduler(app):
-    """Start a 24-hour background job that sends expiry reminder emails."""
+    """Start background jobs: expiry reminders (24h) and CRL refresh (12h)."""
     scheduler = BackgroundScheduler(daemon=True)
     scheduler.add_job(
         send_expiry_reminders,
@@ -90,8 +90,15 @@ def _start_reminder_scheduler(app):
         id="expiry_reminders",
         replace_existing=True,
     )
+    scheduler.add_job(
+        cm.generate_crl,
+        trigger="interval",
+        hours=12,
+        id="crl_refresh",
+        replace_existing=True,
+    )
     scheduler.start()
-    logging.getLogger(__name__).info("Expiry reminder scheduler started (24h interval)")
+    logging.getLogger(__name__).info("Scheduler started: expiry reminders (24h), CRL refresh (12h)")
 
 
 def _setup_logging(app):

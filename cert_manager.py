@@ -267,7 +267,7 @@ def generate_crl() -> None:
 
     ca_cert, ca_key = _load_ca()
     now = datetime.now(timezone.utc)
-    next_update = now + timedelta(days=7)
+    next_update = now + timedelta(days=Config.CRL_VALIDITY_DAYS)
 
     builder = (
         x509.CertificateRevocationListBuilder()

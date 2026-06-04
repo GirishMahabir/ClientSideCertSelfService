@@ -55,6 +55,7 @@ class Config:
     CA_STATE = os.environ.get("CA_STATE", "California")
     CA_LOCALITY = os.environ.get("CA_LOCALITY", "San Francisco")
     CA_VALIDITY_DAYS = int(os.environ.get("CA_VALIDITY_DAYS", "3650"))
+    CRL_VALIDITY_DAYS = int(os.environ.get("CRL_VALIDITY_DAYS", "30"))
 
     # Client cert
     CLIENT_CERT_VALIDITY_DAYS = int(os.environ.get("CLIENT_CERT_VALIDITY_DAYS", "365"))
